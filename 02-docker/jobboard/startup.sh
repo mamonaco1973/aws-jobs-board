@@ -21,8 +21,7 @@ echo "NOTE: Waiting for database connection..."
 MAX_ATTEMPTS=30
 ATTEMPT=0
 
-until bundle exec rails runner "ActiveRecord::Base.connection.execute('SELECT 1')" \
-      > /dev/null 2>&1; do
+until bundle exec rake db:version > /dev/null 2>&1; do
   ATTEMPT=$((ATTEMPT + 1))
   if [ "$ATTEMPT" -ge "$MAX_ATTEMPTS" ]; then
     echo "ERROR: Database not reachable after ${MAX_ATTEMPTS} attempts. Exiting."
@@ -36,20 +35,14 @@ echo "NOTE: Database connection established."
 
 # ------------------------------------------------------------------------------
 # Migrate and Seed
-# db:prepare = db:create (if missing) + db:migrate
-# Seeds run only when the jobs table is empty to avoid duplicate demo data.
+# rake db:migrate runs all pending migrations.
+# rake db:seed uses find_or_create_by! throughout so it is safe to always run.
 # ------------------------------------------------------------------------------
 echo "NOTE: Running database migrations..."
-bundle exec rails db:prepare
+bundle exec rake db:migrate
 
 echo "NOTE: Seeding demo data if needed..."
-bundle exec rails runner "
-  if Job.count.zero?
-    load Rails.root.join('db/seeds.rb')
-  else
-    puts 'NOTE: Data already present, skipping seeds.'
-  end
-"
+bundle exec rake db:seed
 
 # ------------------------------------------------------------------------------
 # Start Sidekiq in Background
