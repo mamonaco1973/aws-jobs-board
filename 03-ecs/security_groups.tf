@@ -35,7 +35,7 @@ resource "aws_security_group" "alb" {
 # ------------------------------------------------------------------------------
 resource "aws_security_group" "ecs_service" {
   name        = "jobboard-ecs-sg"
-  description = "ECS tasks — allow from ALB only"
+  description = "ECS tasks - allow from ALB only"
   vpc_id      = data.aws_vpc.ecs-vpc.id
 
   ingress {
