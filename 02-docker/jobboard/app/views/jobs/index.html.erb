@@ -1,0 +1,53 @@
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold text-gray-800">Open Positions</h1>
+  <% if user_signed_in? && current_user.employer? %>
+    <%= link_to "Post a Job", new_job_path,
+        class: "bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700" %>
+  <% end %>
+</div>
+
+<%# Search Bar %>
+<%= form_with url: jobs_path, method: :get, local: true, class: "flex gap-3 mb-8" do |f| %>
+  <%= f.text_field :q, value: params[:q], placeholder: "Search jobs...",
+      class: "flex-1 border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400" %>
+  <%= f.text_field :location, value: params[:location], placeholder: "Location",
+      class: "w-48 border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400" %>
+  <%= f.submit "Search", class: "bg-blue-600 text-white px-5 py-2 rounded hover:bg-blue-700 cursor-pointer" %>
+<% end %>
+
+<%# Job Listings %>
+<% if @jobs.any? %>
+  <div class="space-y-4">
+    <% @jobs.each do |job| %>
+      <div class="bg-white border border-gray-200 rounded-lg p-5 hover:shadow-md transition-shadow">
+        <div class="flex items-start justify-between">
+          <div>
+            <%= link_to job.title, job_path(job),
+                class: "text-lg font-semibold text-blue-700 hover:text-blue-900" %>
+            <p class="text-sm text-gray-600 mt-1">
+              <%= job.company.name %> &bull; <%= job.location %>
+              <% if job.salary_min || job.salary_max %>
+                &bull; <%= job.salary_range %>
+              <% end %>
+            </p>
+          </div>
+          <span class="text-xs text-gray-400"><%= time_ago_in_words(job.created_at) %> ago</span>
+        </div>
+        <p class="mt-3 text-gray-700 text-sm line-clamp-2"><%= truncate(job.description, length: 180) %></p>
+        <div class="mt-3 flex gap-3">
+          <%= link_to "View Details →", job_path(job), class: "text-blue-600 text-sm hover:underline" %>
+          <% if user_signed_in? && current_user.employer? && job.company.user == current_user %>
+            <%= link_to "Edit", edit_job_path(job), class: "text-gray-500 text-sm hover:underline" %>
+          <% end %>
+        </div>
+      </div>
+    <% end %>
+  </div>
+<% else %>
+  <div class="text-center py-16 text-gray-500">
+    <p class="text-lg">No jobs found.</p>
+    <% if params[:q].present? || params[:location].present? %>
+      <%= link_to "Clear filters", jobs_path, class: "text-blue-600 hover:underline mt-2 inline-block" %>
+    <% end %>
+  </div>
+<% end %>

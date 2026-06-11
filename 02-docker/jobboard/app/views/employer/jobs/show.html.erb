@@ -1,0 +1,43 @@
+<div class="mb-4">
+  <%= link_to "← Back to Dashboard", employer_root_path, class: "text-blue-600 hover:underline text-sm" %>
+</div>
+
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold text-gray-800"><%= @job.title %></h1>
+  <%= link_to "Edit Job", edit_job_path(@job),
+      class: "text-sm border border-gray-300 px-3 py-1 rounded hover:bg-gray-50" %>
+</div>
+
+<h2 class="text-lg font-semibold text-gray-700 mb-4">
+  Applications (<%= @applications.count %>)
+</h2>
+
+<% if @applications.any? %>
+  <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50 border-b border-gray-200">
+        <tr>
+          <th class="px-5 py-3 text-left font-medium text-gray-600">Candidate</th>
+          <th class="px-5 py-3 text-left font-medium text-gray-600">Applied</th>
+          <th class="px-5 py-3 text-left font-medium text-gray-600">Status</th>
+          <th class="px-5 py-3"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        <% @applications.each do |app| %>
+          <tr class="hover:bg-gray-50">
+            <td class="px-5 py-3 font-medium text-gray-800"><%= app.user.email %></td>
+            <td class="px-5 py-3 text-gray-500"><%= app.created_at.strftime("%b %d, %Y") %></td>
+            <td class="px-5 py-3"><%= status_badge(app.status) %></td>
+            <td class="px-5 py-3">
+              <%= link_to "Review", employer_job_application_path(@job, app),
+                  class: "text-blue-600 hover:underline text-xs" %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+<% else %>
+  <div class="text-center py-12 text-gray-500">No applications yet.</div>
+<% end %>

@@ -3,39 +3,27 @@
 # Script Name: apply.sh
 # ================================================================================================
 # Purpose:
-#   Automates deployment of a full AWS-hosted RStudio environment using
-#   Terraform and Docker. The process is organized into multiple phases that
-#   provision infrastructure, build Docker images, and deploy ECS workloads.
+#   Deploys the JobBoard Ruby on Rails application end-to-end on AWS.
 #
 # Deployment Phases:
-#   1. Active Directory domain controller (authentication backbone)
-#   2. Domain-joined EC2 management servers
-#   3. RStudio Docker image build and ECR push
-#   4. ECS cluster deployment for RStudio containers
-#   5. Post-deployment validation and checks
+#   1. Network infrastructure (VPC, RDS, ElastiCache Redis, ECR, S3, Secrets Manager)
+#   2. Docker image build and ECR push
+#   3. ECS Fargate cluster, ALB, and service deployment
+#   4. Post-deployment validation
 #
 # Requirements:
 #   - AWS CLI v2, Terraform, Docker, jq
 #   - AWS credentials with administrative permissions
-#
 # ================================================================================================
 
 # -----------------------------------------------------------------------------------------------
 # Global Configuration
-# -----------------------------------------------------------------------------------------------
-# Configure environment-wide defaults and ensure strict error handling.
-# - AWS_DEFAULT_REGION defines the target AWS region.
-# - set -euo pipefail ensures immediate failure on errors or unset variables.
 # -----------------------------------------------------------------------------------------------
 export AWS_DEFAULT_REGION="us-east-1"
 set -euo pipefail
 
 # -----------------------------------------------------------------------------------------------
 # Environment Pre-Check
-# -----------------------------------------------------------------------------------------------
-# Validates that prerequisites are installed and the environment is configured
-# properly. The `check_env.sh` script verifies the presence of required tools
-# and credentials before proceeding.
 # -----------------------------------------------------------------------------------------------
 echo "NOTE: Running environment validation..."
 ./check_env.sh
@@ -44,125 +32,86 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-# -----------------------------------------------------------------------------------------------
-# Phase 1: Build Active Directory Domain Controller
-# -----------------------------------------------------------------------------------------------
-# Deploys the Active Directory domain controller via Terraform. This instance
-# provides authentication services required by downstream EC2 and ECS nodes.
-# -----------------------------------------------------------------------------------------------
-echo "NOTE: Building Active Directory instance..."
-cd 01-directory || { echo "ERROR: 01-directory not found."; exit 1; }
+# ================================================================================================
+# Phase 1: Network Infrastructure
+# ================================================================================================
+# Provisions VPC, subnets, RDS PostgreSQL, ElastiCache Redis, ECR repository,
+# S3 bucket for uploads, and Secrets Manager entries for all credentials.
+# ================================================================================================
+echo "NOTE: Building network infrastructure..."
+cd 01-network || { echo "ERROR: 01-network not found."; exit 1; }
 
 terraform init
 terraform apply -auto-approve
 
-cd .. || exit
-
-# -----------------------------------------------------------------------------------------------
-# Phase 2: Build Dependent EC2 Servers
-# -----------------------------------------------------------------------------------------------
-# Provisions domain-joined EC2 instances that serve as auxiliary systems or
-# management servers. These depend on a functioning AD domain from Phase 1.
-# -----------------------------------------------------------------------------------------------
-echo "NOTE: Building EC2 server instances..."
-cd 02-servers || { echo "ERROR: 02-servers not found."; exit 1; }
-
-terraform init
-terraform apply -auto-approve
+# Capture outputs consumed by the Docker build and ECS phases
+export S3_BUCKET=$(terraform output -raw s3_bucket_name)
+export ECR_URL=$(terraform output -raw ecr_repository_url)
 
 cd .. || exit
 
-# -----------------------------------------------------------------------------------------------
-# Phase 3: Build RStudio Docker Image and Push to ECR
-# -----------------------------------------------------------------------------------------------
-# Builds the RStudio Server container image locally and uploads it to Amazon
-# Elastic Container Registry (ECR). This image is later deployed via ECS.
-# -----------------------------------------------------------------------------------------------
-echo "NOTE: Building RStudio Docker image and pushing to ECR..."
-cd 03-docker/rstudio || { echo "ERROR: rstudio directory missing."; exit 1; }
+# ================================================================================================
+# Phase 2: Build and Push Docker Image
+# ================================================================================================
+# Builds the Rails application container and pushes it to ECR.
+# ================================================================================================
+echo "NOTE: Building and pushing Docker image to ECR..."
+cd 02-docker/jobboard || { echo "ERROR: 02-docker/jobboard not found."; exit 1; }
 
-# Retrieve AWS Account ID for ECR repository reference.
 AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
-if [ -z "$AWS_ACCOUNT_ID" ]; then
-  echo "ERROR: Failed to retrieve AWS Account ID. Exiting."
-  exit 1
-fi
+IMAGE_TAG="${ECR_URL}:latest"
 
-# Authenticate Docker with ECR using temporary credentials.
-aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | \
-docker login --username AWS --password-stdin \
-"${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com" || {
-  echo "ERROR: Docker authentication failed. Exiting."
-  exit 1
-}
-
-# Retrieve RStudio credentials from AWS Secrets Manager.
-RSTUDIO_PASSWORD=$(aws secretsmanager get-secret-value \
-  --secret-id rstudio_credentials \
-  --query 'SecretString' \
-  --output text | jq -r '.password')
-
-if [ -z "$RSTUDIO_PASSWORD" ] || [ "$RSTUDIO_PASSWORD" = "null" ]; then
-  echo "ERROR: Failed to retrieve RStudio password. Exiting."
-  exit 1
-fi
-
-# -----------------------------------------------------------------------------------------------
-# Build and Push RStudio Docker Image
-# -----------------------------------------------------------------------------------------------
-# Checks if the image already exists in ECR. If not found, it builds and pushes
-# the image. Prevents unnecessary rebuilds when image is already available.
-# -----------------------------------------------------------------------------------------------
-IMAGE_TAG="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/rstudio:rstudio-server-rc1"
-
-echo "NOTE: Checking if image already exists in ECR..."
-if aws ecr describe-images \
-    --repository-name rstudio \
-    --image-ids imageTag="rstudio-server-rc1" \
-    --region "${AWS_DEFAULT_REGION}" >/dev/null 2>&1; then
-  echo "NOTE: Image already exists in ECR: ${IMAGE_TAG}"
-else
-  echo "WARNING: Image not found in ECR. Building and pushing..."
-
-  docker build \
-    --build-arg RSTUDIO_PASSWORD="${RSTUDIO_PASSWORD}" \
-    -t "${IMAGE_TAG}" . || {
-      echo "ERROR: Docker build failed. Exiting."
-      exit 1
-    }
-
-  docker push "${IMAGE_TAG}" || {
-    echo "ERROR: Docker push failed. Exiting."
+# Authenticate Docker with ECR using temporary STS credentials
+aws ecr get-login-password --region "${AWS_DEFAULT_REGION}" | \
+  docker login --username AWS --password-stdin \
+  "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com" || {
+    echo "ERROR: Docker ECR authentication failed."
     exit 1
   }
 
-  echo "NOTE: Image successfully built and pushed to ECR: ${IMAGE_TAG}"
-fi
+echo "NOTE: Building Docker image..."
+docker build -t "${IMAGE_TAG}" . || {
+  echo "ERROR: Docker build failed."
+  exit 1
+}
+
+echo "NOTE: Pushing image to ECR..."
+docker push "${IMAGE_TAG}" || {
+  echo "ERROR: Docker push failed."
+  exit 1
+}
+echo "NOTE: Image pushed: ${IMAGE_TAG}"
 
 cd ../.. || exit
 
-# -----------------------------------------------------------------------------------------------
-# Phase 4: Build ECS Cluster
-# -----------------------------------------------------------------------------------------------
-# Deploys the ECS cluster infrastructure using Terraform. This includes node
-# groups, capacity providers, and service definitions for RStudio containers.
-# -----------------------------------------------------------------------------------------------
-echo "NOTE: Building ECS cluster..."
-cd 04-ecs || { echo "ERROR: 04-ecs directory missing."; exit 1; }
+# ================================================================================================
+# Phase 3: ECS Fargate Cluster and Service
+# ================================================================================================
+# Deploys the ECS Fargate cluster, ALB, task definition, and ECS service.
+# Secrets Manager entries from Phase 1 are injected into ECS tasks at runtime.
+# ================================================================================================
+echo "NOTE: Deploying ECS Fargate cluster and service..."
+cd 03-ecs || { echo "ERROR: 03-ecs not found."; exit 1; }
 
 terraform init
-terraform apply -auto-approve
+terraform apply -auto-approve \
+  -var="s3_bucket_name=${S3_BUCKET}"
+
+export ALB_DNS=$(terraform output -raw alb_dns_name)
 
 cd .. || exit
 
-# -----------------------------------------------------------------------------------------------
-# Phase 5: Build Validation
-# -----------------------------------------------------------------------------------------------
-# Executes validation checks to confirm that the environment is deployed
-# correctly, domain joins succeed, and services are reachable.
-# -----------------------------------------------------------------------------------------------
-echo "NOTE: Running build validation..."
-./validate.sh  # Uncomment once validation script is implemented
+# ================================================================================================
+# Phase 4: Validation
+# ================================================================================================
+echo "NOTE: Running post-deployment validation..."
+./validate.sh
+
+echo ""
+echo "NOTE: Deployment complete."
+echo "NOTE: JobBoard URL:           http://${ALB_DNS}"
+echo "NOTE: Candidate login:        candidate1@example.com / password123"
+echo "NOTE: Employer login:         employer1@example.com  / password123"
 
 # ================================================================================================
 # End of Script

@@ -1,0 +1,56 @@
+<div class="max-w-3xl">
+  <div class="mb-4">
+    <%= link_to "← Back to Jobs", jobs_path, class: "text-blue-600 hover:underline text-sm" %>
+  </div>
+
+  <div class="bg-white rounded-lg border border-gray-200 p-8">
+    <div class="flex items-start justify-between mb-6">
+      <div>
+        <h1 class="text-2xl font-bold text-gray-900"><%= @job.title %></h1>
+        <p class="text-gray-600 mt-1">
+          <%= link_to @job.company.name, company_path(@job.company),
+              class: "text-blue-600 hover:underline" %>
+          &bull; <%= @job.location %>
+          <% if @job.salary_min || @job.salary_max %>
+            &bull; <%= @job.salary_range %>
+          <% end %>
+        </p>
+      </div>
+      <% if user_signed_in? && current_user.employer? && @job.company.user == current_user %>
+        <div class="flex gap-2">
+          <%= link_to "Edit", edit_job_path(@job),
+              class: "text-sm border border-gray-300 px-3 py-1 rounded hover:bg-gray-50" %>
+          <%= link_to "Delete", job_path(@job), data: { turbo_method: :delete, turbo_confirm: "Delete this job?" },
+              class: "text-sm border border-red-300 text-red-600 px-3 py-1 rounded hover:bg-red-50" %>
+        </div>
+      <% end %>
+    </div>
+
+    <div class="prose max-w-none text-gray-700 mb-8 whitespace-pre-wrap">
+      <%= @job.description %>
+    </div>
+
+    <%# Apply CTA %>
+    <div class="border-t pt-6">
+      <% if user_signed_in? && current_user.candidate? %>
+        <% if current_user.job_applications.exists?(job: @job) %>
+          <div class="bg-green-50 border border-green-200 rounded p-4 text-green-800 text-sm">
+            You have already applied to this position.
+          </div>
+        <% else %>
+          <%= link_to "Apply for this Position", new_job_application_path(@job),
+              class: "bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 inline-block" %>
+        <% end %>
+      <% elsif !user_signed_in? %>
+        <p class="text-gray-600 text-sm">
+          <%= link_to "Sign in", new_user_session_path, class: "text-blue-600 hover:underline" %>
+          or
+          <%= link_to "create an account", new_user_registration_path, class: "text-blue-600 hover:underline" %>
+          to apply.
+        </p>
+      <% end %>
+    </div>
+
+    <p class="text-xs text-gray-400 mt-6">Posted <%= time_ago_in_words(@job.created_at) %> ago</p>
+  </div>
+</div>

@@ -1,0 +1,17 @@
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+
+development:
+  <<: *default
+  database: jobboard_development
+
+test:
+  <<: *default
+  database: jobboard_test
+
+# DATABASE_URL injected at runtime from Secrets Manager — overrides everything
+production:
+  <<: *default
+  url: <%= ENV["DATABASE_URL"] %>

@@ -1,0 +1,40 @@
+<div class="max-w-2xl">
+  <div class="mb-4">
+    <%= link_to "← Back to Job", job_path(@job), class: "text-blue-600 hover:underline text-sm" %>
+  </div>
+
+  <h1 class="text-2xl font-bold text-gray-800 mb-2">Apply for <%= @job.title %></h1>
+  <p class="text-gray-600 text-sm mb-6"><%= @job.company.name %> &bull; <%= @job.location %></p>
+
+  <div class="bg-white border border-gray-200 rounded-lg p-6">
+    <%= form_with model: [@job, @application], local: true, class: "space-y-5" do |f| %>
+      <% if @application.errors.any? %>
+        <div class="bg-red-50 border border-red-300 rounded p-4 text-sm text-red-700">
+          <ul class="list-disc pl-5">
+            <% @application.errors.full_messages.each do |msg| %>
+              <li><%= msg %></li>
+            <% end %>
+          </ul>
+        </div>
+      <% end %>
+
+      <div>
+        <%= f.label :cover_letter, "Cover Letter", class: "block text-sm font-medium text-gray-700 mb-1" %>
+        <%= f.text_area :cover_letter, rows: 8,
+            class: "w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400",
+            placeholder: "Tell us why you're the right person for this role..." %>
+      </div>
+
+      <div>
+        <%= f.label :resume, "Resume (PDF or Word)", class: "block text-sm font-medium text-gray-700 mb-1" %>
+        <%= f.file_field :resume,
+            accept: ".pdf,.doc,.docx",
+            class: "w-full border border-gray-300 rounded px-3 py-2 text-sm" %>
+        <p class="text-xs text-gray-500 mt-1">PDF or Word document, max 10MB</p>
+      </div>
+
+      <%= f.submit "Submit Application",
+          class: "bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 cursor-pointer font-medium" %>
+    <% end %>
+  </div>
+</div>

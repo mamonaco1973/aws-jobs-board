@@ -1,0 +1,11 @@
+.bundle/
+log/*.log
+tmp/
+storage/
+public/assets/
+public/packs/
+node_modules/
+.env
+config/master.key
+config/credentials.yml.enc
+Gemfile.lock

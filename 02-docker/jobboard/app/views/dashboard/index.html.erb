@@ -1,0 +1,33 @@
+<h1 class="text-2xl font-bold text-gray-800 mb-6">My Applications</h1>
+
+<% if @applications.any? %>
+  <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50 border-b border-gray-200">
+        <tr>
+          <th class="px-5 py-3 text-left font-medium text-gray-600">Position</th>
+          <th class="px-5 py-3 text-left font-medium text-gray-600">Company</th>
+          <th class="px-5 py-3 text-left font-medium text-gray-600">Applied</th>
+          <th class="px-5 py-3 text-left font-medium text-gray-600">Status</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        <% @applications.each do |app| %>
+          <tr class="hover:bg-gray-50">
+            <td class="px-5 py-3">
+              <%= link_to app.job.title, job_path(app.job), class: "text-blue-600 hover:underline" %>
+            </td>
+            <td class="px-5 py-3 text-gray-600"><%= app.job.company.name %></td>
+            <td class="px-5 py-3 text-gray-500"><%= app.created_at.strftime("%b %d, %Y") %></td>
+            <td class="px-5 py-3"><%= status_badge(app.status) %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+<% else %>
+  <div class="text-center py-16 text-gray-500">
+    <p class="text-lg mb-3">No applications yet.</p>
+    <%= link_to "Browse open positions →", jobs_path, class: "text-blue-600 hover:underline" %>
+  </div>
+<% end %>

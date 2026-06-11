@@ -3,115 +3,77 @@
 # Script Name: destroy.sh
 # ================================================================================================
 # Purpose:
-#   Automates the teardown of all AWS infrastructure provisioned for the
-#   RStudio environment. This includes ECS services, EC2 instances,
-#   Active Directory resources, and related secrets or repositories.
+#   Tears down all AWS infrastructure provisioned by apply.sh.
+#   Destroys resources in reverse dependency order.
 #
 # Destruction Phases:
-#   1. ECS cluster and networking components
-#   2. Domain-joined EC2 server instances
-#   3. Active Directory domain controller and secrets
-#   4. ECR repository cleanup
-#
-# Requirements:
-#   - AWS CLI v2 and Terraform must be installed
-#   - AWS credentials with administrative privileges
-#
+#   1. ECS Fargate service and ALB
+#   2. ECR repository (force-delete all images)
+#   3. Secrets Manager entries
+#   4. Network infrastructure (VPC, RDS, ElastiCache Redis, S3)
 # ================================================================================================
 
-# -----------------------------------------------------------------------------------------------
-# Global Configuration
-# -----------------------------------------------------------------------------------------------
-# Defines core configuration parameters for teardown operations.
-# - AWS_DEFAULT_REGION ensures all deletions target the correct region.
-# - set -euo pipefail guarantees the script stops on any error or unset variable.
-# -----------------------------------------------------------------------------------------------
 export AWS_DEFAULT_REGION="us-east-1"
 set -euo pipefail
 
-# -----------------------------------------------------------------------------------------------
-# Phase 1: Destroy ECS Cluster
-# -----------------------------------------------------------------------------------------------
-# Removes the ECS cluster, associated task definitions, services, and load
-# balancers. Terraform manages dependency order to ensure safe cleanup.
-# -----------------------------------------------------------------------------------------------
-echo "NOTE: Destroying ECS cluster..."
-cd 04-ecs || { echo "ERROR: Directory 04-ecs not found."; exit 1; }
+# ================================================================================================
+# Phase 1: Destroy ECS Cluster and ALB
+# ================================================================================================
+echo "NOTE: Destroying ECS cluster and ALB..."
+cd 03-ecs || { echo "ERROR: Directory 03-ecs not found."; exit 1; }
+
+# Resolve the S3 bucket name to satisfy the Terraform variable during destroy
+S3_BUCKET=$(aws s3api list-buckets \
+  --query "Buckets[?starts_with(Name,'jobboard-uploads')].Name | [0]" \
+  --output text 2>/dev/null || echo "jobboard-uploads-placeholder")
 
 terraform init
-terraform destroy -auto-approve
+terraform destroy -auto-approve -var="s3_bucket_name=${S3_BUCKET}" || true
 
 cd .. || exit
 
-# -----------------------------------------------------------------------------------------------
-# Phase 2: Destroy EC2 Server Instances
-# -----------------------------------------------------------------------------------------------
-# Deletes EC2-based servers joined to the Active Directory domain. This step
-# ensures that all dependent compute resources are removed prior to deleting
-# the AD controller itself.
-# -----------------------------------------------------------------------------------------------
-echo "NOTE: Destroying EC2 server instances..."
-cd 02-servers || { echo "ERROR: Directory 02-servers not found."; exit 1; }
+# ================================================================================================
+# Phase 2: Delete ECR Images and Repository
+# Terraform created the ECR repo in 01-network; delete images manually first
+# since terraform destroy in 01-network would fail on a non-empty repository.
+# ================================================================================================
+echo "NOTE: Deleting ECR repository..."
+aws ecr delete-repository \
+  --repository-name "jobboard" \
+  --force \
+  --region "${AWS_DEFAULT_REGION}" 2>/dev/null || \
+  echo "WARN: ECR repository not found or already deleted."
 
-terraform init
-terraform destroy -auto-approve
-
-cd .. || exit
-
-# -----------------------------------------------------------------------------------------------
-# Phase 3: Delete AD Secrets and Domain Controller
-# -----------------------------------------------------------------------------------------------
-# Permanently deletes AWS Secrets Manager entries and removes the Active
-# Directory controller. Secrets include user credentials and admin passwords.
-# WARNING: This step is irreversible — deleted secrets cannot be recovered.
-# -----------------------------------------------------------------------------------------------
-echo "NOTE: Deleting AD-related AWS secrets and parameters..."
+# ================================================================================================
+# Phase 3: Delete Secrets Manager Entries
+# Terraform marks secrets for deletion with a recovery window; --force-delete
+# bypasses the 7-30 day window so re-deploys can reuse the same secret names.
+# ================================================================================================
+echo "NOTE: Deleting Secrets Manager entries..."
 
 for secret in \
-  akumar_ad_credentials \
-  jsmith_ad_credentials \
-  edavis_ad_credentials \
-  rpatel_ad_credentials \
-  rstudio_credentials \
-  admin_ad_credentials; do
+  jobboard_database_url \
+  jobboard_redis_url \
+  jobboard_secret_key_base; do
 
   aws secretsmanager delete-secret \
     --secret-id "$secret" \
-    --force-delete-without-recovery || {
-      echo "WARN: Failed to delete secret '$secret'. It may not exist."
-    }
+    --force-delete-without-recovery \
+    --region "${AWS_DEFAULT_REGION}" 2>/dev/null || \
+    echo "WARN: Secret '${secret}' not found or already deleted."
 done
 
-# -----------------------------------------------------------------------------------------------
-# ECR Repository Cleanup
-# -----------------------------------------------------------------------------------------------
-# Removes the RStudio Docker image repository from Amazon ECR. The --force
-# flag ensures all images are deleted prior to repository removal.
-# -----------------------------------------------------------------------------------------------
-aws ecr delete-repository --repository-name "rstudio" --force || {
-  echo "WARN: Failed to delete ECR repository. It may not exist."
-}
-
-# -----------------------------------------------------------------------------------------------
-# Active Directory Domain Controller Destruction
-# -----------------------------------------------------------------------------------------------
-# Removes the Active Directory instance that provided authentication services.
-# This must occur after dependent EC2 instances have been terminated.
-# -----------------------------------------------------------------------------------------------
-echo "NOTE: Destroying AD instance..."
-cd 01-directory || { echo "ERROR: Directory 01-directory not found."; exit 1; }
+# ================================================================================================
+# Phase 4: Destroy Network Infrastructure
+# ================================================================================================
+echo "NOTE: Destroying network infrastructure..."
+cd 01-network || { echo "ERROR: Directory 01-network not found."; exit 1; }
 
 terraform init
 terraform destroy -auto-approve
 
 cd .. || exit
 
-# -----------------------------------------------------------------------------------------------
-# Phase 4: Completion
-# -----------------------------------------------------------------------------------------------
-# Confirms that all Terraform-managed resources and supporting AWS artifacts
-# have been successfully destroyed.
-# -----------------------------------------------------------------------------------------------
 echo "NOTE: Infrastructure teardown complete."
 
 # ================================================================================================

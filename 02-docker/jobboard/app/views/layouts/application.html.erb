@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>JobBoard</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="csrf-param" content="<%= request_forgery_protection_token %>">
+    <meta name="csrf-token" content="<%= form_authenticity_token %>">
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-gray-50 min-h-screen">
+
+    <%# Navigation %>
+    <nav class="bg-blue-700 text-white shadow-md">
+      <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+        <a href="<%= root_path %>" class="text-xl font-bold tracking-tight">JobBoard</a>
+        <div class="flex items-center gap-4 text-sm">
+          <a href="<%= jobs_path %>" class="hover:text-blue-200">Browse Jobs</a>
+          <% if user_signed_in? %>
+            <% if current_user.employer? %>
+              <a href="<%= employer_root_path %>" class="hover:text-blue-200">Dashboard</a>
+              <a href="<%= new_job_path %>" class="hover:text-blue-200">Post a Job</a>
+            <% else %>
+              <a href="<%= dashboard_path %>" class="hover:text-blue-200">My Applications</a>
+            <% end %>
+            <span class="text-blue-300"><%= current_user.email %></span>
+            <%= link_to "Sign out", destroy_user_session_path, data: { turbo_method: :delete },
+                class: "bg-white text-blue-700 px-3 py-1 rounded hover:bg-blue-50" %>
+          <% else %>
+            <%= link_to "Sign in", new_user_session_path,
+                class: "hover:text-blue-200" %>
+            <%= link_to "Sign up", new_user_registration_path,
+                class: "bg-white text-blue-700 px-3 py-1 rounded hover:bg-blue-50" %>
+          <% end %>
+        </div>
+      </div>
+    </nav>
+
+    <%# Flash Messages %>
+    <div class="max-w-6xl mx-auto px-4 mt-4">
+      <% flash.each do |type, message| %>
+        <% css = type.to_s == "alert" ? "bg-red-50 border-red-300 text-red-800" : "bg-green-50 border-green-300 text-green-800" %>
+        <div class="border rounded px-4 py-3 mb-4 <%= css %>">
+          <%= message %>
+        </div>
+      <% end %>
+    </div>
+
+    <%# Main Content %>
+    <main class="max-w-6xl mx-auto px-4 py-6">
+      <%= yield %>
+    </main>
+
+  </body>
+</html>
