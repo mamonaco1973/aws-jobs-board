@@ -7,7 +7,7 @@
   <p class="text-gray-600 text-sm mb-6"><%= @job.company.name %> &bull; <%= @job.location %></p>
 
   <div class="bg-white border border-gray-200 rounded-lg p-6">
-    <%= form_with model: [@job, @application], local: true, class: "space-y-5" do |f| %>
+    <%= form_with model: @application, url: job_applications_path(@job), local: true, class: "space-y-5" do |f| %>
       <% if @application.errors.any? %>
         <div class="bg-red-50 border border-red-300 rounded p-4 text-sm text-red-700">
           <ul class="list-disc pl-5">
