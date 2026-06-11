@@ -1,0 +1,56 @@
+{
+  "domain": {
+    "dnsZone": "${DNS_ZONE}",
+    "netbios": "${NETBIOS}",
+    "userBaseDn": "${USER_BASE_DN}"
+  },
+  "groups": [
+    { "name": "${lower(NETBIOS)}-users",  "gidNumber": 10001 },
+    { "name": "us",             "gidNumber": 10002 },
+    { "name": "india",          "gidNumber": 10003 },
+    { "name": "linux-admins",   "gidNumber": 10004 },
+    { "name": "rstudio-admins", "gidNumber": 10005 }
+  ],
+  "users": [
+    {
+      "username": "jsmith",
+      "givenName": "John",
+      "surname": "Smith",
+      "password": "${jsmith_password}",
+      "uidNumber": 10001,
+      "gidNumber": 10001,
+      "primaryGroup": "${lower(NETBIOS)}-users",
+      "extraGroups": ["us", "linux-admins", "rstudio-admins", "Domain Admins"]
+    },
+    {
+      "username": "edavis",
+      "givenName": "Emily",
+      "surname": "Davis",
+      "password": "${edavis_password}",
+      "uidNumber": 10002,
+      "gidNumber": 10001,
+      "primaryGroup": "${lower(NETBIOS)}-users",
+      "extraGroups": ["us"]
+    },
+    {
+      "username": "rpatel",
+      "givenName": "Raj",
+      "surname": "Patel",
+      "password": "${rpatel_password}",
+      "uidNumber": 10003,
+      "gidNumber": 10001,
+      "primaryGroup": "${lower(NETBIOS)}-users",
+      "extraGroups": ["india", "linux-admins", "rstudio-admins", "Domain Admins"]
+    },
+    {
+      "username": "akumar",
+      "givenName": "Amit",
+      "surname": "Kumar",
+      "password": "${akumar_password}",
+      "uidNumber": 10004,
+      "gidNumber": 10001,
+      "primaryGroup": "${lower(NETBIOS)}-users",
+      "extraGroups": ["india"]
+    }
+  ]
+}
